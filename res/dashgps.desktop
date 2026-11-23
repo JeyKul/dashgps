@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=DashGPS
+Comment=Play dashcam videos with their GPS track on a map
+Exec=dashgps %F
+Icon=dashgps
+Categories=AudioVideo;Video;Player;Maps;
+MimeType=video/mp4;video/quicktime;video/mp2t;

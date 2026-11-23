@@ -1,0 +1,8 @@
+build/
+*.MP4
+*.mp4
+*.mov
+*.MOV
+*.ts
+*.gpx
+*.AppImage

@@ -1,0 +1,116 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+env:
+  QT_VERSION: '6.8.3'
+
+jobs:
+  linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          modules: qtmultimedia
+          cache: true
+      - name: Install build deps
+        run: sudo apt-get update && sudo apt-get install -y ninja-build libxkbcommon-x11-0 libxcb-cursor0 libfuse2 libpulse0 libgl1-mesa-dev
+      - name: Build
+        run: |
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr
+          cmake --build build
+          DESTDIR=$PWD/AppDir cmake --install build
+      - name: Smoke test parser
+        run: |
+          python3 tools/make_sample.py sample.mp4 10
+          ./build/dashgps-cli --info sample.mp4
+          ./build/dashgps-cli -f gpx sample.mp4 | grep -c trkpt | grep -q '^10$'
+      - name: AppImage
+        run: |
+          wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          wget -q https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
+          chmod +x linuxdeploy*.AppImage
+          export QMAKE=$(which qmake6 || which qmake)
+          export EXTRA_QT_PLUGINS="multimedia"
+          export EXTRA_PLATFORM_PLUGINS="libqwayland-egl.so;libqwayland-generic.so"
+          ./linuxdeploy-x86_64.AppImage --appdir AppDir --plugin qt --output appimage \
+            -d AppDir/usr/share/applications/dashgps.desktop -i AppDir/usr/share/icons/hicolor/scalable/apps/dashgps.svg
+          mv DashGPS*.AppImage DashGPS-linux-x86_64.AppImage
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DashGPS-linux
+          path: DashGPS-linux-x86_64.AppImage
+
+  windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          arch: win64_msvc2022_64
+          modules: qtmultimedia
+          cache: true
+      - uses: ilammy/msvc-dev-cmd@v1
+      - name: Build
+        run: |
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build
+      - name: Package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory dist/DashGPS | Out-Null
+          Copy-Item build/dashgps.exe, build/dashgps-cli.exe dist/DashGPS/
+          windeployqt --release --no-translations dist/DashGPS/dashgps.exe
+          Compress-Archive dist/DashGPS DashGPS-windows-x64.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DashGPS-windows
+          path: DashGPS-windows-x64.zip
+
+  macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          modules: qtmultimedia
+          cache: true
+      - name: Build
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
+          cmake --build build -j4
+      - name: Package
+        run: |
+          cp build/dashgps-cli build/dashgps.app/Contents/MacOS/
+          macdeployqt build/dashgps.app -dmg
+          mv build/dashgps.dmg DashGPS-macos.dmg
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DashGPS-macos
+          path: DashGPS-macos.dmg
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [linux, windows, macos]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            DashGPS-linux-x86_64.AppImage
+            DashGPS-windows-x64.zip
+            DashGPS-macos.dmg
