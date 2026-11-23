@@ -55,7 +55,7 @@ QString fmtTime(qint64 ms) {
     return QStringLiteral("%1:%2").arg(s / 60).arg(s % 60, 2, 10, QLatin1Char('0'));
 }
 
-// "20261031163028_005579F.MP4" -> 2026-10-31 16:30:28 ; also handles 2026_1031_163028 etc.
+// "20260101120000_000001F.MP4" -> 2026-01-01 12:00:00 ; also handles 2026_1031_163028 etc.
 QDateTime timeFromName(const QString &name) {
     QString digits;
     for (QChar c : name) {
@@ -70,7 +70,7 @@ QDateTime timeFromName(const QString &name) {
 enum class Cam { Front, Rear, Unknown };
 
 Cam camOf(const QFileInfo &fi) {
-    // file name suffix first ("..._005579F.MP4"), then the folder it is in
+    // file name suffix first ("..._000001F.MP4"), then the folder it is in
     // ("Movie_R", "Rear", ...). Only the direct parent folder counts.
     QString base = fi.completeBaseName();
     if (base.endsWith('R', Qt::CaseInsensitive) || base.endsWith("_B", Qt::CaseInsensitive)) return Cam::Rear;
