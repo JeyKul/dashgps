@@ -67,12 +67,14 @@ QDateTime timeFromName(const QString &name) {
 enum class Cam { Front, Rear, Unknown };
 
 Cam camOf(const QFileInfo &fi) {
+    // file name suffix first ("..._005579F.MP4"), then the folder it is in
+    // ("Movie_R", "Rear", ...). Only the direct parent folder counts.
     QString base = fi.completeBaseName();
-    QString dir = fi.absolutePath().toLower();
-    if (dir.contains("_r") || dir.endsWith("rear") || dir.contains("/rear")) return Cam::Rear;
-    if (dir.contains("_f") || dir.endsWith("front") || dir.contains("/front")) return Cam::Front;
     if (base.endsWith('R', Qt::CaseInsensitive) || base.endsWith("_B", Qt::CaseInsensitive)) return Cam::Rear;
     if (base.endsWith('F', Qt::CaseInsensitive) || base.endsWith("_A", Qt::CaseInsensitive)) return Cam::Front;
+    QString dir = fi.dir().dirName().toLower();
+    if (dir.endsWith("_r") || dir.contains("rear") || dir.contains("back")) return Cam::Rear;
+    if (dir.endsWith("_f") || dir.contains("front")) return Cam::Front;
     return Cam::Unknown;
 }
 
@@ -213,12 +215,15 @@ void MainWindow::buildActions() {
     for (int i = 0; i < 3; ++i) {
         auto *a = new QAction(camNames[i], m_camGroup);
         a->setCheckable(true);
-        a->setChecked(i == 0);
+        a->setChecked(i == QSettings().value("cameraView", 2).toInt());
         a->setShortcut(QKeySequence(Qt::Key_1 + i));
         a->setData(i);
         a->setToolTip(camNames[i] + QStringLiteral(" (%1)").arg(i + 1));
     }
-    connect(m_camGroup, &QActionGroup::triggered, this, &MainWindow::updateViewMode);
+    connect(m_camGroup, &QActionGroup::triggered, this, [this](QAction *a) {
+        QSettings().setValue("cameraView", a->data());
+        updateViewMode();
+    });
 
     m_themeGroup = new QActionGroup(this);
     const QStringList themes = {tr("Automatic (like system)"), tr("Light map"), tr("Dark map")};
