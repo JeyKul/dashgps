@@ -21,7 +21,7 @@ jobs:
           modules: qtmultimedia
           cache: true
       - name: Install build deps
-        run: sudo apt-get update && sudo apt-get install -y ninja-build libxkbcommon-x11-0 libxcb-cursor0 libfuse2 libpulse0 libgl1-mesa-dev
+        run: sudo apt-get update && sudo apt-get install -y ninja-build libxkbcommon-x11-0 libxcb-cursor0 libfuse2 libpulse0 libgl1-mesa-dev ffmpeg
       - name: Build
         run: |
           cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr
