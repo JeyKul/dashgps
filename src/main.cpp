@@ -17,6 +17,7 @@ int main(int argc, char **argv) {
     if (!args.isEmpty()) w.openPaths(args);
     // Developer hook for headless screenshots: DASHGPS_SCREENSHOT=out.png
     QString shot = qEnvironmentVariable("DASHGPS_SCREENSHOT");
+    if (qEnvironmentVariableIsSet("DASHGPS_AUTOPLAY")) QTimer::singleShot(2000, &w, [&] { w.play(); });
     if (!shot.isEmpty())
         QTimer::singleShot(8000, &w, [&] { w.grab().save(shot); app.quit(); });
     return app.exec();

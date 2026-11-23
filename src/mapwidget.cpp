@@ -19,6 +19,39 @@ static QPointF mercator(double lat, double lon) {
     return {x, y};
 }
 
+// Dark map: invert lightness but keep the hue, so water stays blue and parks
+// stay green, then dim it a little. Done locally, no extra tile server needed.
+static QImage darken(const QImage &src) {
+    QImage img = src.convertToFormat(QImage::Format_ARGB32);
+    for (int y = 0; y < img.height(); ++y) {
+        auto *line = reinterpret_cast<QRgb *>(img.scanLine(y));
+        for (int x = 0; x < img.width(); ++x) {
+            QRgb c = line[x];
+            int r = qRed(c), g = qGreen(c), b = qBlue(c);
+            int l = (r * 299 + g * 587 + b * 114) / 1000;
+            int shift = 255 - 2 * l;  // move luma l -> 255 - l
+            r = qBound(0, r + shift, 255);
+            g = qBound(0, g + shift, 255);
+            b = qBound(0, b + shift, 255);
+            // compress towards a dark grey-blue so it is easy on the eyes
+            r = 18 + r * 70 / 100;
+            g = 20 + g * 70 / 100;
+            b = 26 + b * 72 / 100;
+            line[x] = qRgba(r, g, b, qAlpha(c));
+        }
+    }
+    return img;
+}
+
+void MapWidget::setDark(bool dark) {
+    if (dark == m_dark) return;
+    m_dark = dark;
+    m_tiles.clear();
+    for (auto it = m_rawTiles.cbegin(); it != m_rawTiles.cend(); ++it)
+        m_tiles.insert(it.key(), QPixmap::fromImage(m_dark ? darken(*it) : *it));
+    update();
+}
+
 MapWidget::MapWidget(QWidget *parent) : QWidget(parent), m_net(new QNetworkAccessManager(this)) {
     auto *cache = new QNetworkDiskCache(this);
     cache->setCacheDirectory(QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + "/tiles");
@@ -86,10 +119,12 @@ void MapWidget::requestTile(int z, int x, int y) {
 void MapWidget::tileArrived(QNetworkReply *r) {
     QString key = r->request().attribute(QNetworkRequest::User).toString();
     m_pending.remove(key);
-    QPixmap px;
-    if (r->error() == QNetworkReply::NoError && px.loadFromData(r->readAll())) {
-        m_tiles.insert(key, px);
-        if (m_tiles.size() > 600) m_tiles.clear();  // crude bound, tiles stay in disk cache
+    QImage img;
+    if (r->error() == QNetworkReply::NoError && img.loadFromData(r->readAll())) {
+        if (m_tiles.size() > 600) { m_tiles.clear(); m_rawTiles.clear(); }  // crude bound, tiles stay in disk cache
+        img = img.convertToFormat(QImage::Format_ARGB32);
+        m_rawTiles.insert(key, img);
+        m_tiles.insert(key, QPixmap::fromImage(m_dark ? darken(img) : img));
         update();
     }
     r->deleteLater();
@@ -97,7 +132,7 @@ void MapWidget::tileArrived(QNetworkReply *r) {
 
 void MapWidget::paintEvent(QPaintEvent *) {
     QPainter p(this);
-    p.fillRect(rect(), QColor(0xe8, 0xe6, 0xe1));
+    p.fillRect(rect(), m_dark ? QColor(0x1b, 0x1e, 0x24) : QColor(0xe8, 0xe6, 0xe1));
     p.setRenderHint(QPainter::SmoothPixmapTransform);
 
     const int n = 1 << m_zoom;
@@ -149,9 +184,9 @@ void MapWidget::paintEvent(QPaintEvent *) {
             if (first) path.moveTo(s); else path.lineTo(s);
             first = false;
         }
-        p.setPen(QPen(Qt::white, 7, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+        p.setPen(QPen(m_dark ? QColor(10, 10, 10) : QColor(Qt::white), 7, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
         p.drawPath(path);
-        p.setPen(QPen(QColor(0x1e, 0x88, 0xe5), 4, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+        p.setPen(QPen(m_dark ? QColor(0x4f, 0xc3, 0xf7) : QColor(0x1e, 0x88, 0xe5), 4, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
         p.drawPath(path);
     }
 
@@ -172,8 +207,8 @@ void MapWidget::paintEvent(QPaintEvent *) {
     QFontMetrics fm(font());
     QRect ar(width() - fm.horizontalAdvance(attr) - 10, height() - fm.height() - 4, fm.horizontalAdvance(attr) + 10,
              fm.height() + 4);
-    p.fillRect(ar, QColor(255, 255, 255, 200));
-    p.setPen(Qt::black);
+    p.fillRect(ar, m_dark ? QColor(0, 0, 0, 170) : QColor(255, 255, 255, 200));
+    p.setPen(m_dark ? QColor(220, 220, 220) : QColor(Qt::black));
     p.drawText(ar, Qt::AlignCenter, attr);
 }
 

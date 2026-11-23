@@ -3,8 +3,8 @@
 #include "gpsparser.h"
 
 #include <QDateTime>
-#include <QMainWindow>
 #include <QHash>
+#include <QMainWindow>
 #include <QMutex>
 #include <QPointer>
 #include <QThread>
@@ -12,14 +12,14 @@
 #include <memory>
 
 class QAction;
+class QActionGroup;
 class QAudioOutput;
-class QComboBox;
 class QLabel;
-class QListWidget;
 class QMediaPlayer;
-class QPushButton;
 class QSlider;
-class QStackedLayout;
+class QStackedWidget;
+class QToolButton;
+class QTreeWidget;
 class QVideoWidget;
 class MapWidget;
 
@@ -35,15 +35,19 @@ class MainWindow : public QMainWindow {
 public:
     explicit MainWindow(QWidget *parent = nullptr);
     void openPaths(const QStringList &paths);
+    void play();
 
 protected:
-    void dragEnterEvent(QDragEnterEvent *) override;
-    void dropEvent(QDropEvent *) override;
-    void keyPressEvent(QKeyEvent *) override;
+    bool eventFilter(QObject *obj, QEvent *ev) override;
     void closeEvent(QCloseEvent *) override;
+    void changeEvent(QEvent *) override;
 
 private:
+    void buildActions();
     void buildUi();
+    QWidget *buildEmptyPage();
+    QWidget *buildTransport();
+    QWidget *buildInfoPanel();
     void openFolderDialog();
     void openFilesDialog();
     void exportDialog();
@@ -51,7 +55,12 @@ private:
     void updateFromPosition(qint64 ms);
     void updateMapTracks();
     void updateViewMode();
+    void updateVolumeIcon();
+    void applyTextSize(int percent);
+    void applyMapTheme();
     void startBackgroundParsing();
+    void seekBy(qint64 deltaMs);
+    void setRate(double r);
     std::shared_ptr<const dashgps::Track> trackFor(int clip);
     QString fmtSpeed(double kmh) const;
 
@@ -65,12 +74,20 @@ private:
     QMediaPlayer *m_player = nullptr, *m_rearPlayer = nullptr;
     QAudioOutput *m_audio = nullptr;
     QVideoWidget *m_video = nullptr, *m_rearVideo = nullptr;
+    QStackedWidget *m_centerStack = nullptr;
     MapWidget *m_map = nullptr;
-    QListWidget *m_list = nullptr;
-    QSlider *m_slider = nullptr;
-    QPushButton *m_playBtn = nullptr;
-    QLabel *m_timeLbl = nullptr, *m_speedLbl = nullptr, *m_infoLbl = nullptr, *m_clockLbl = nullptr;
-    QComboBox *m_viewMode = nullptr, *m_rate = nullptr;
-    QAction *m_followAct = nullptr, *m_mphAct = nullptr;
+    QTreeWidget *m_list = nullptr;
+    QSlider *m_slider = nullptr, *m_volume = nullptr;
+    QToolButton *m_playBtn = nullptr, *m_muteBtn = nullptr, *m_rateBtn = nullptr;
+    QLabel *m_timeLbl = nullptr, *m_speedLbl = nullptr, *m_unitLbl = nullptr, *m_infoLbl = nullptr,
+           *m_clockLbl = nullptr, *m_dateLbl = nullptr;
+    QWidget *m_transport = nullptr;
+
+    QAction *m_actOpenFolder = nullptr, *m_actOpenFiles = nullptr, *m_actExport = nullptr;
+    QAction *m_actFollow = nullptr, *m_actFit = nullptr, *m_actMph = nullptr;
+    QAction *m_actPlay = nullptr, *m_actMute = nullptr;
+    QActionGroup *m_camGroup = nullptr, *m_themeGroup = nullptr, *m_sizeGroup = nullptr;
+    double m_rate = 1.0;
     bool m_sliderDown = false;
+    qreal m_baseFontPt = 0;
 };

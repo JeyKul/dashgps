@@ -23,6 +23,8 @@ public:
     void setZoom(int z) { m_zoom = qBound(2, z, 19); update(); }
     int zoom() const { return m_zoom; }
     bool follow() const { return m_follow; }
+    void setDark(bool dark);
+    bool isDark() const { return m_dark; }
     void setTileUrl(const QString &tmpl) { m_tileUrl = tmpl; m_tiles.clear(); update(); }
 
 signals:
@@ -45,7 +47,9 @@ private:
 
     QNetworkAccessManager *m_net;
     QString m_tileUrl = QStringLiteral("https://tile.openstreetmap.org/%1/%2/%3.png");
-    QHash<QString, QPixmap> m_tiles;
+    QHash<QString, QPixmap> m_tiles;      // as displayed (recoloured in dark mode)
+    QHash<QString, QImage> m_rawTiles;    // original tiles, for switching themes
+    bool m_dark = false;
     QSet<QString> m_pending;
 
     int m_zoom = 3;

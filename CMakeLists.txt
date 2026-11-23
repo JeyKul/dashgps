@@ -16,7 +16,7 @@ if(DASHGPS_GUI)
     find_package(Qt6 6.5 REQUIRED COMPONENTS Widgets Multimedia MultimediaWidgets Network)
     qt_standard_project_setup()
     qt_add_executable(dashgps WIN32 MACOSX_BUNDLE
-        src/main.cpp src/mainwindow.cpp src/mainwindow.h src/mapwidget.cpp src/mapwidget.h)
+        src/main.cpp src/mainwindow.cpp src/mainwindow.h src/mapwidget.cpp src/mapwidget.h src/icons.cpp src/icons.h)
     qt_add_resources(dashgps "res" PREFIX "/" BASE res FILES res/icon.svg)
     target_compile_definitions(dashgps PRIVATE DASHGPS_VERSION="${PROJECT_VERSION}")
     target_link_libraries(dashgps PRIVATE dashgps_core
