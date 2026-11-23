@@ -95,6 +95,11 @@ void paintIcon(QPainter &p, Icon which, const QColor &c) {
             p.setBrush(Qt::NoBrush);
         }
         break;
+    case Icon::Save:
+        p.drawLine(QPointF(12, 3), QPointF(12, 15));
+        p.drawPolyline(QPolygonF({{7, 10}, {12, 15}, {17, 10}}));
+        p.drawPolyline(QPolygonF({{4, 14}, {4, 20}, {20, 20}, {20, 14}}));
+        break;
     case Icon::Speed:
         p.drawArc(QRectF(3, 5, 18, 18), 0, 180 * 16);
         p.drawLine(QPointF(12, 14), QPointF(17, 8));

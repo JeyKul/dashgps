@@ -22,7 +22,10 @@
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QMimeData>
+#include <QProgressBar>
+#include <QProgressDialog>
 #include <QPushButton>
+#include <QStorageInfo>
 #include <QSettings>
 #include <QSlider>
 #include <QSplitter>
@@ -175,6 +178,12 @@ void MainWindow::buildActions() {
     m_actExport->setEnabled(false);
     connect(m_actExport, &QAction::triggered, this, &MainWindow::exportDialog);
 
+    m_actSave = new QAction(tr("&Save videos to folder…"), this);
+    m_actSave->setShortcut(QKeySequence::Save);
+    m_actSave->setToolTip(tr("Copy videos from the memory card to your computer (Ctrl+S)"));
+    m_actSave->setEnabled(false);
+    connect(m_actSave, &QAction::triggered, this, &MainWindow::saveVideosDialog);
+
     m_actPlay = new QAction(tr("&Play"), this);
     m_actPlay->setShortcuts({QKeySequence(Qt::Key_Space), QKeySequence(Qt::Key_K), QKeySequence(Qt::Key_MediaTogglePlayPause)});
     m_actPlay->setToolTip(tr("Play / pause (Space)"));
@@ -256,6 +265,7 @@ void MainWindow::buildUi() {
     mFile->addAction(m_actOpenFolder);
     mFile->addAction(m_actOpenFiles);
     mFile->addSeparator();
+    mFile->addAction(m_actSave);
     mFile->addAction(m_actExport);
     mFile->addSeparator();
     mFile->addAction(tr("&Quit"), QKeySequence::Quit, this, &QWidget::close);
@@ -316,6 +326,7 @@ void MainWindow::buildUi() {
             "<tr><td><b>+ / −</b></td><td>Zoom map</td></tr>"
             "<tr><td><b>F11</b></td><td>Full screen</td></tr>"
             "<tr><td><b>Ctrl + O</b></td><td>Open folder</td></tr>"
+            "<tr><td><b>Ctrl + S</b></td><td>Save videos to folder</td></tr>"
             "<tr><td><b>Ctrl + E</b></td><td>Export route</td></tr>"
             "</table>"));
     });
@@ -333,6 +344,7 @@ void MainWindow::buildUi() {
     tb->setMovable(false);
     tb->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     tb->addAction(m_actOpenFolder);
+    tb->addAction(m_actSave);
     tb->addAction(m_actExport);
     tb->addSeparator();
     tb->addActions(m_camGroup->actions());
@@ -363,11 +375,13 @@ void MainWindow::buildUi() {
     m_list->setHeaderHidden(true);
     m_list->setRootIsDecorated(true);
     m_list->setUniformRowHeights(true);
+    m_list->setSelectionMode(QAbstractItemView::ExtendedSelection);
     m_list->setMinimumWidth(200);
     m_list->setAccessibleName(tr("Video clips"));
     m_list->setAccessibleDescription(tr("All clips, grouped by day. Press Enter to play a clip."));
     m_list->setStyleSheet("QTreeWidget::item { padding: 5px 2px; }");
     auto pick = [this](QTreeWidgetItem *it) {
+        if (QApplication::keyboardModifiers() & (Qt::ControlModifier | Qt::ShiftModifier)) return;  // selecting
         QVariant v = it->data(0, Qt::UserRole);
         if (v.isValid() && v.toInt() != m_current) loadClip(v.toInt());
     };
@@ -479,6 +493,12 @@ void MainWindow::buildUi() {
     connect(m_player, &QMediaPlayer::errorOccurred, this, [this](QMediaPlayer::Error, const QString &msg) {
         statusBar()->showMessage(tr("Cannot play this video: %1").arg(msg), 10000);
     });
+
+    m_progress = new QProgressBar;
+    m_progress->setMaximumWidth(260);
+    m_progress->setAccessibleName(tr("Reading GPS data"));
+    m_progress->hide();
+    statusBar()->addPermanentWidget(m_progress);
 
     m_transport->setEnabled(false);
     statusBar()->showMessage(tr("Ready"));
@@ -694,6 +714,7 @@ void MainWindow::applyTextSize(int percent) {
     m_actOpenFolder->setIcon(makeIcon(Icon::Folder, ic));
     m_actOpenFiles->setIcon(makeIcon(Icon::File, ic));
     m_actExport->setIcon(makeIcon(Icon::Export, ic));
+    m_actSave->setIcon(makeIcon(Icon::Save, ic));
     m_actFollow->setIcon(makeIcon(Icon::Follow, ic));
     m_actFit->setIcon(makeIcon(Icon::Fit, ic));
     if (auto *sb = findChild<QToolButton *>("settingsBtn")) sb->setIcon(makeIcon(Icon::Settings, ic));
@@ -762,19 +783,29 @@ void MainWindow::openFilesDialog() {
 
 void MainWindow::openPaths(const QStringList &paths) {
     QStringList files;
+    QApplication::setOverrideCursor(Qt::WaitCursor);
+    statusBar()->showMessage(tr("Looking for videos…"));
+    QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
     for (auto &p : paths) {
         QFileInfo fi(p);
         if (fi.isDir()) {
             QDirIterator it(p, QDir::Files, QDirIterator::Subdirectories);
             while (it.hasNext()) {
                 QString f = it.next();
-                if (kVideoExt.contains(QFileInfo(f).suffix().toLower())) files << f;
+                if (!kVideoExt.contains(QFileInfo(f).suffix().toLower())) continue;
+                files << f;
+                if (files.size() % 100 == 0) {
+                    statusBar()->showMessage(tr("Looking for videos… %n found", nullptr, files.size()));
+                    QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+                }
             }
         } else if (fi.isFile() && kVideoExt.contains(fi.suffix().toLower())) {
             files << fi.absoluteFilePath();
         }
     }
+    QApplication::restoreOverrideCursor();
     if (files.isEmpty()) {
+        statusBar()->clearMessage();
         QMessageBox::information(this, tr("No videos found"),
                                  tr("There are no dashcam videos (MP4, MOV or TS) in what you opened."));
         return;
@@ -817,7 +848,9 @@ void MainWindow::openPaths(const QStringList &paths) {
     m_centerStack->setCurrentIndex(1);
     m_transport->setEnabled(true);
     m_actExport->setEnabled(true);
+    m_actSave->setEnabled(true);
     statusBar()->showMessage(tr("%n clip(s) loaded", nullptr, m_clips.size()), 5000);
+    parseProgress(0, int(m_clips.size()));
     startBackgroundParsing();
     loadClip(0);
 }
@@ -837,13 +870,29 @@ void MainWindow::startBackgroundParsing() {
             QMutexLocker l(&m_trackLock);
             if (gen != m_parseGeneration) return;
             if (!m_tracks.contains(i)) m_tracks.insert(i, t);
-            if (i % 20 == 19 || i == clips.size() - 1)
-                QMetaObject::invokeMethod(this, [this] { updateMapTracks(); }, Qt::QueuedConnection);
+            if (i % 20 == 19 || i == clips.size() - 1) {
+                int done = i + 1, total = int(clips.size());
+                QMetaObject::invokeMethod(this, [this, done, total] {
+                    parseProgress(done, total);
+                    updateMapTracks();
+                }, Qt::QueuedConnection);
+            }
         }
     });
     connect(th, &QThread::finished, th, &QObject::deleteLater);
     m_parser = th;
     th->start(QThread::LowPriority);
+}
+
+void MainWindow::parseProgress(int done, int total) {
+    if (done >= total || total <= 1) {
+        m_progress->hide();
+        return;
+    }
+    m_progress->setRange(0, total);
+    m_progress->setValue(done);
+    m_progress->setFormat(tr("Reading GPS… %1 / %2").arg(done).arg(total));
+    m_progress->show();
 }
 
 std::shared_ptr<const Track> MainWindow::trackFor(int clip) {
@@ -952,19 +1001,44 @@ void MainWindow::updateViewMode() {
     m_videoArea->setMode(VideoArea::Mode(mode));
 }
 
+QList<int> MainWindow::chooseClips(const QString &title, const QString &question) {
+    QList<int> selected;
+    for (auto *it : m_list->selectedItems()) {
+        QVariant v = it->data(0, Qt::UserRole);
+        if (v.isValid()) selected << v.toInt();
+        else for (int j = 0; j < it->childCount(); ++j) selected << it->child(j)->data(0, Qt::UserRole).toInt();
+    }
+    std::sort(selected.begin(), selected.end());
+    selected.erase(std::unique(selected.begin(), selected.end()), selected.end());
+
+    QMessageBox box(this);
+    box.setWindowTitle(title);
+    box.setText(question);
+    QAbstractButton *bSel = nullptr;
+    if (selected.size() > 1)
+        bSel = box.addButton(tr("Selected clips (%1)").arg(selected.size()), QMessageBox::AcceptRole);
+    auto *bOne = box.addButton(tr("This clip"), QMessageBox::AcceptRole);
+    auto *bDay = box.addButton(tr("The whole day"), QMessageBox::AcceptRole);
+    auto *bAll = box.addButton(tr("Everything (%1)").arg(m_clips.size()), QMessageBox::AcceptRole);
+    box.addButton(QMessageBox::Cancel);
+    box.setDefaultButton(bSel ? static_cast<QPushButton *>(bSel) : bDay);
+    box.exec();
+
+    QList<int> out;
+    QAbstractButton *b = box.clickedButton();
+    QDate day = m_clips[m_current].start.date();
+    if (b && b == bSel) out = selected;
+    else if (b == bOne) out << m_current;
+    else if (b == bDay || b == bAll)
+        for (int i = 0; i < m_clips.size(); ++i)
+            if (b == bAll || m_clips[i].start.date() == day) out << i;
+    return out;
+}
+
 void MainWindow::exportDialog() {
     if (m_clips.isEmpty() || m_current < 0) return;
-    QMessageBox box(this);
-    box.setWindowTitle(tr("Export route"));
-    box.setText(tr("Which route do you want to save?"));
-    auto *b0 = box.addButton(tr("This clip"), QMessageBox::AcceptRole);
-    auto *b1 = box.addButton(tr("The whole day"), QMessageBox::AcceptRole);
-    auto *b2 = box.addButton(tr("Everything"), QMessageBox::AcceptRole);
-    box.addButton(QMessageBox::Cancel);
-    box.setDefaultButton(b1);
-    box.exec();
-    int scope = box.clickedButton() == b0 ? 0 : box.clickedButton() == b1 ? 1 : box.clickedButton() == b2 ? 2 : -1;
-    if (scope < 0) return;
+    QList<int> clips = chooseClips(tr("Export route"), tr("Which route do you want to save?"));
+    if (clips.isEmpty()) return;
 
     QString sel;
     QString fn = QFileDialog::getSaveFileName(this, tr("Export route"), QSettings().value("lastExport").toString(),
@@ -975,10 +1049,7 @@ void MainWindow::exportDialog() {
     QSettings().setValue("lastExport", QFileInfo(fn).absolutePath());
 
     std::vector<dashgps::NamedTrack> tracks;
-    QDate day = m_clips[m_current].start.date();
-    for (int i = 0; i < m_clips.size(); ++i) {
-        if (scope == 0 && i != m_current) continue;
-        if (scope == 1 && m_clips[i].start.date() != day) continue;
+    for (int i : clips) {
         auto t = trackFor(i);
         if (t && t->hasFix()) tracks.push_back({QFileInfo(m_clips[i].front).fileName().toStdString(), *t});
     }
@@ -986,6 +1057,92 @@ void MainWindow::exportDialog() {
     dashgps::writeAny(fmt.toStdString(), o, tracks);
     statusBar()->showMessage(o ? tr("Saved %n clip(s) to %1", nullptr, int(tracks.size())).arg(fn)
                                : tr("Could not save %1").arg(fn), 8000);
+}
+
+void MainWindow::saveVideosDialog() {
+    if (m_clips.isEmpty() || m_current < 0) return;
+    QList<int> clips = chooseClips(tr("Save videos"), tr("Which videos do you want to copy to your computer?"));
+    if (clips.isEmpty()) return;
+    QString dir = QFileDialog::getExistingDirectory(this, tr("Save videos to folder"),
+                                                    QSettings().value("lastSaveDir", QDir::homePath()).toString());
+    if (dir.isEmpty()) return;
+    QSettings().setValue("lastSaveDir", dir);
+
+    qint64 bytes = 0;
+    for (int i : clips) {
+        bytes += QFileInfo(m_clips[i].front).size();
+        if (!m_clips[i].rear.isEmpty()) bytes += QFileInfo(m_clips[i].rear).size();
+    }
+    QStorageInfo st(dir);
+    if (st.isValid() && st.bytesAvailable() < bytes) {
+        QMessageBox::warning(this, tr("Not enough space"),
+                             tr("These videos need %1 GB, but the folder only has %2 GB free.")
+                                 .arg(bytes / 1e9, 0, 'f', 1).arg(st.bytesAvailable() / 1e9, 0, 'f', 1));
+        return;
+    }
+    int n = saveClips(clips, dir);
+    if (n >= 0) statusBar()->showMessage(tr("Copied %n video file(s) to %1", nullptr, n).arg(dir), 10000);
+}
+
+int MainWindow::saveClips(const QList<int> &clips, const QString &dir) {
+    QStringList files;
+    for (int i : clips) {
+        if (i < 0 || i >= m_clips.size()) continue;
+        files << m_clips[i].front;
+        if (!m_clips[i].rear.isEmpty()) files << m_clips[i].rear;
+    }
+    qint64 total = 0;
+    for (auto &f : files) total += QFileInfo(f).size();
+
+    QProgressDialog dlg(tr("Copying videos…"), tr("Cancel"), 0, 1000, this);
+    dlg.setWindowTitle(tr("Save videos"));
+    dlg.setWindowModality(Qt::WindowModal);
+    dlg.setMinimumDuration(0);
+    dlg.setValue(0);
+
+    qint64 doneBytes = 0;
+    int copied = 0;
+    QByteArray buf(4 << 20, Qt::Uninitialized);
+    for (int k = 0; k < files.size(); ++k) {
+        QFileInfo src(files[k]);
+        QString dst = QDir(dir).filePath(src.fileName());
+        dlg.setLabelText(tr("Copying video %1 of %2\n%3").arg(k + 1).arg(files.size()).arg(src.fileName()));
+        // already there (same size): skip
+        if (QFileInfo(dst).exists() && QFileInfo(dst).size() == src.size()) {
+            doneBytes += src.size();
+            continue;
+        }
+        QFile in(src.absoluteFilePath()), out(dst + ".part");
+        if (!in.open(QIODevice::ReadOnly) || !out.open(QIODevice::WriteOnly)) {
+            QMessageBox::warning(this, tr("Copy failed"), tr("Could not copy %1.").arg(src.fileName()));
+            return copied;
+        }
+        while (true) {
+            qint64 r = in.read(buf.data(), buf.size());
+            if (r <= 0) break;
+            if (out.write(buf.constData(), r) != r) {
+                out.remove();
+                QMessageBox::warning(this, tr("Copy failed"), tr("Could not write %1. Is the disk full?").arg(dst));
+                return copied;
+            }
+            doneBytes += r;
+            dlg.setValue(total ? int(doneBytes * 1000 / total) : 0);
+            QApplication::processEvents();
+            if (dlg.wasCanceled()) {
+                out.remove();
+                return copied;
+            }
+        }
+        out.close();
+        QFile::remove(dst);
+        out.rename(dst);
+        // keep the original date so the files sort the same way
+        QFile f(dst);
+        if (f.open(QIODevice::ReadWrite)) f.setFileTime(src.lastModified(), QFileDevice::FileModificationTime);
+        ++copied;
+    }
+    dlg.setValue(1000);
+    return copied;
 }
 
 bool MainWindow::eventFilter(QObject *obj, QEvent *ev) {

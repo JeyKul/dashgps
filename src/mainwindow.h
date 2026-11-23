@@ -15,6 +15,7 @@ class QAction;
 class QActionGroup;
 class QLabel;
 class QMediaPlayer;
+class QProgressBar;
 class QSlider;
 class QStackedWidget;
 class QToolButton;
@@ -37,6 +38,8 @@ public:
     explicit MainWindow(QWidget *parent = nullptr);
     void openPaths(const QStringList &paths);
     void play();
+    // Copies the clips (front + rear files) into dir. Returns number of files copied.
+    int saveClips(const QList<int> &clips, const QString &dir);
 
 protected:
     bool eventFilter(QObject *obj, QEvent *ev) override;
@@ -60,6 +63,9 @@ private:
     void applyTextSize(int percent);
     void applyMapTheme();
     void startBackgroundParsing();
+    void parseProgress(int done, int total);
+    QList<int> chooseClips(const QString &title, const QString &question);
+    void saveVideosDialog();
     void seekBy(qint64 deltaMs);
     void setRate(double r);
     std::shared_ptr<const dashgps::Track> trackFor(int clip);
@@ -84,8 +90,9 @@ private:
     QLabel *m_timeLbl = nullptr, *m_speedLbl = nullptr, *m_unitLbl = nullptr, *m_infoLbl = nullptr,
            *m_clockLbl = nullptr, *m_dateLbl = nullptr;
     QWidget *m_transport = nullptr;
+    QProgressBar *m_progress = nullptr;
 
-    QAction *m_actOpenFolder = nullptr, *m_actOpenFiles = nullptr, *m_actExport = nullptr;
+    QAction *m_actOpenFolder = nullptr, *m_actOpenFiles = nullptr, *m_actExport = nullptr, *m_actSave = nullptr;
     QAction *m_actFollow = nullptr, *m_actFit = nullptr, *m_actMph = nullptr;
     QAction *m_actPlay = nullptr, *m_actMute = nullptr;
     QActionGroup *m_camGroup = nullptr, *m_themeGroup = nullptr, *m_sizeGroup = nullptr;

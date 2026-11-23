@@ -6,7 +6,7 @@
 #include <QIcon>
 
 enum class Icon {
-    Play, Pause, Prev, Next, Back, Forward, Volume, Muted, Folder, File, Export, Follow, Fit, Settings, Speed
+    Play, Pause, Prev, Next, Back, Forward, Volume, Muted, Folder, File, Export, Follow, Fit, Settings, Speed, Save
 };
 
 QIcon makeIcon(Icon which, const QColor &color);

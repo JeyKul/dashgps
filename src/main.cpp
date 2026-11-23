@@ -19,6 +19,6 @@ int main(int argc, char **argv) {
     QString shot = qEnvironmentVariable("DASHGPS_SCREENSHOT");
     if (qEnvironmentVariableIsSet("DASHGPS_AUTOPLAY")) QTimer::singleShot(2000, &w, [&] { w.play(); });
     if (!shot.isEmpty())
-        QTimer::singleShot(8000, &w, [&] { w.grab().save(shot); app.quit(); });
+        QTimer::singleShot(qEnvironmentVariableIntValue("DASHGPS_SHOT_MS") ? qEnvironmentVariableIntValue("DASHGPS_SHOT_MS") : 8000, &w, [&] { w.grab().save(shot); app.quit(); });
     return app.exec();
 }
