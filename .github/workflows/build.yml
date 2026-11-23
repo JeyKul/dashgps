@@ -39,7 +39,9 @@ jobs:
           chmod +x linuxdeploy*.AppImage
           export QMAKE=$(which qmake6 || which qmake)
           export EXTRA_QT_PLUGINS="multimedia"
-          export EXTRA_PLATFORM_PLUGINS="libqwayland-egl.so;libqwayland-generic.so"
+          PLUG=$(dirname $(dirname $QMAKE))/plugins/platforms
+          ls $PLUG
+          export EXTRA_PLATFORM_PLUGINS=$(cd $PLUG && ls libqwayland*.so 2>/dev/null | paste -sd ';')
           ./linuxdeploy-x86_64.AppImage --appdir AppDir --plugin qt --output appimage \
             -d AppDir/usr/share/applications/dashgps.desktop -i AppDir/usr/share/icons/hicolor/scalable/apps/dashgps.svg
           mv DashGPS*.AppImage DashGPS-linux-x86_64.AppImage
