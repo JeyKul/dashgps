@@ -13,7 +13,6 @@
 
 class QAction;
 class QActionGroup;
-class QAudioOutput;
 class QLabel;
 class QMediaPlayer;
 class QSlider;
@@ -22,6 +21,8 @@ class QToolButton;
 class QTreeWidget;
 class QVideoWidget;
 class MapWidget;
+class StereoAudio;
+class VideoArea;
 
 struct Clip {
     QString front;       // main video (front camera, or the only one)
@@ -72,7 +73,8 @@ private:
     QPointer<QThread> m_parser;
 
     QMediaPlayer *m_player = nullptr, *m_rearPlayer = nullptr;
-    QAudioOutput *m_audio = nullptr;
+    StereoAudio *m_audio = nullptr;
+    VideoArea *m_videoArea = nullptr;
     QVideoWidget *m_video = nullptr, *m_rearVideo = nullptr;
     QStackedWidget *m_centerStack = nullptr;
     MapWidget *m_map = nullptr;

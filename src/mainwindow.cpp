@@ -3,12 +3,12 @@
 #include "exporters.h"
 #include "icons.h"
 #include "mapwidget.h"
+#include "stereoaudio.h"
+#include "videoarea.h"
 
 #include <QAction>
 #include <QActionGroup>
 #include <QApplication>
-#include <QAudioDevice>
-#include <QAudioOutput>
 #include <QDirIterator>
 #include <QDropEvent>
 #include <QFileDialog>
@@ -16,7 +16,7 @@
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QLabel>
-#include <QMediaDevices>
+#include <QMediaMetaData>
 #include <QMediaPlayer>
 #include <QMenu>
 #include <QMenuBar>
@@ -209,7 +209,7 @@ void MainWindow::buildActions() {
     });
 
     m_camGroup = new QActionGroup(this);
-    const QStringList camNames = {tr("Front camera"), tr("Rear camera"), tr("Front + rear")};
+    const QStringList camNames = {tr("Front camera"), tr("Rear camera"), tr("Both cameras")};
     for (int i = 0; i < 3; ++i) {
         auto *a = new QAction(camNames[i], m_camGroup);
         a->setCheckable(true);
@@ -374,33 +374,24 @@ void MainWindow::buildUi() {
     m_rearVideo = new QVideoWidget;
     m_video->setAccessibleName(tr("Front camera video"));
     m_rearVideo->setAccessibleName(tr("Rear camera video"));
-    m_video->setMinimumSize(320, 180);
-    m_rearVideo->setMinimumSize(160, 90);
-    m_rearVideo->hide();
-    auto *videoBox = new QWidget;
-    auto *vl = new QHBoxLayout(videoBox);
-    vl->setContentsMargins(0, 0, 0, 0);
-    vl->setSpacing(2);
-    vl->addWidget(m_video, 1);
-    vl->addWidget(m_rearVideo, 1);
-    videoBox->setStyleSheet("background:black");
+    m_videoArea = new VideoArea(m_video, m_rearVideo);
 
     m_centerStack = new QStackedWidget;
     m_centerStack->addWidget(buildEmptyPage());
-    m_centerStack->addWidget(videoBox);
+    m_centerStack->addWidget(m_videoArea);
 
     m_player = new QMediaPlayer(this);
-    m_audio = new QAudioOutput(this);
-    m_audio->setDevice(QMediaDevices::defaultAudioOutput());
-    m_player->setAudioOutput(m_audio);
     m_player->setVideoOutput(m_video);
-    m_rearPlayer = new QMediaPlayer(this);  // rear camera audio would just echo the front one
+    m_audio = new StereoAudio(m_player, this);
+    m_rearPlayer = new QMediaPlayer(this);  // no audio: it would just echo the front camera
     m_rearPlayer->setVideoOutput(m_rearVideo);
-    // follow the system when headphones / speakers change
-    auto *devices = new QMediaDevices(this);
-    connect(devices, &QMediaDevices::audioOutputsChanged, this, [this] {
-        m_audio->setDevice(QMediaDevices::defaultAudioOutput());
-    });
+    auto aspectOf = [](QMediaPlayer *p) {
+        QSize s = p->metaData().value(QMediaMetaData::Resolution).toSize();
+        return s.height() > 0 ? double(s.width()) / s.height() : 0.0;
+    };
+    auto updateAspect = [this, aspectOf] { m_videoArea->setAspect(aspectOf(m_player), aspectOf(m_rearPlayer)); };
+    connect(m_player, &QMediaPlayer::metaDataChanged, this, updateAspect);
+    connect(m_rearPlayer, &QMediaPlayer::metaDataChanged, this, updateAspect);
 
     // ---- map + info ----
     m_map = new MapWidget;
@@ -729,6 +720,7 @@ void MainWindow::setRate(double r) {
     m_rate = r;
     m_player->setPlaybackRate(r);
     m_rearPlayer->setPlaybackRate(r);
+    m_audio->setRate(r);
     m_rateBtn->setText(QStringLiteral("%1×").arg(r));
     statusBar()->showMessage(tr("Playback speed %1×").arg(r), 2000);
 }
@@ -952,8 +944,7 @@ void MainWindow::updateViewMode() {
     for (auto *a : m_camGroup->actions())
         if (a->data().toInt() != 0) a->setEnabled(hasRear || m_current < 0);
     if (!hasRear) mode = 0;
-    m_video->setVisible(mode != 1);
-    m_rearVideo->setVisible(mode != 0);
+    m_videoArea->setMode(VideoArea::Mode(mode));
 }
 
 void MainWindow::exportDialog() {
